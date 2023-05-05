@@ -14,9 +14,9 @@
 ## Tutorials
 
 - Currently, we provide three tutorial codes:
-- [01_getting_started.ipynb](https://github.com/hsmoon121/amortized-inference-hci/examples/01_getting_started.ipynb) - Introduction of code implementation.
-- [02_sbi_example.ipynb](https://github.com/hsmoon121/amortized-inference-hci/examples/02_sbi_example.ipynb) - Demonstration of inverse modeling results using the `sbi` library.
-- [03_plot_figures.ipynb](https://github.com/hsmoon121/amortized-inference-hci/examples/03_plot_figures.ipynb) - Script for reproducing figures in our paper.
+- [01_getting_started.ipynb](https://github.com/hsmoon121/amortized-inference-hci/blob/main/examples/01_getting_started.ipynb) - Introduction of code implementation.
+- [02_sbi_example.ipynb](https://github.com/hsmoon121/amortized-inference-hci/blob/main/examples/02_sbi_example.ipynb) - Demonstration of inverse modeling results using the `sbi` library.
+- [03_plot_figures.ipynb](https://github.com/hsmoon121/amortized-inference-hci/blob/main/examples/03_plot_figures.ipynb) - Script for reproducing figures in our paper.
 
 ## Citation
 
