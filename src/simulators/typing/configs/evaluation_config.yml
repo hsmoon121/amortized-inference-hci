@@ -1,0 +1,57 @@
+vision:
+  reward: 5
+  discount: 0.99
+  learning_rate: 0.0
+  epsilon: 1.0
+  episodes: 0
+  q_table: 'vision_q_table.csv'
+
+proofread:
+  reward: 5
+  discount: 0.99
+  learning_rate: 0.01
+  epsilon: 0.9
+  episodes: 3000000
+  action_type: ['Proofread']
+  observation_probability: 0.7
+  sat_true: [0.215, 0.244, 0.266, 0.285, 0.305]
+  error_probability: [0.02, 0.04, 0.06, 0.08, 0.10] # equal to CDF(x=-0.5|sat_true)
+  q_table: 'proofread_q_table.csv'
+
+finger:
+  reward: 5
+  discount: 0.99
+  learning_rate: 0.0
+  epsilon: 0.0
+  episodes: 0
+  sat_desired: [0.9, 0.5, 0.1]
+  sat_true: [0.215, 0.244, 0.266, 0.285, 0.305]
+  action_type: ['Ballistic', 'Peck']
+  transition: 'finger_transition.csv'
+  transition_samples: 1000
+  observation_probability: 0.9
+  optimizer_name: 'MomentumSGD' # options: Adam, RMSprop, MomentumSGD
+  n_units: 512
+  dropout_ratio: 0.0
+  device_id: 0
+  pre_load: True
+  gpu: False
+  replay_buffer: 100000
+  typing_accuracy: 0.1
+  proofread_duration_mean: 0.50
+  proofread_duration_sd: 0.44
+
+supervisor:
+  reward: 5
+  learning_rate: 2.5e-4
+  epsilon: 0.1
+  episodes: 30000000
+  log_interval: 10000
+  sat_desired: [0.9, 0.5, 0.1]
+  sat_true: [0.215, 0.244, 0.266, 0.285, 0.305]
+  optimizer_name: 'Adam' # options: Adam, RMSprop, MomentumSGD
+  n_units: 64
+  dropout_ratio: 0.1
+  device_id: 0
+  pre_load: True
+  gpu: False

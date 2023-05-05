@@ -1,0 +1,18 @@
+board/
+
+# Offline train datasets
+data/menu/datasets/train_*
+data/pnc/datasets/train_*
+data/typing/datasets/train_*
+
+# Empirical dataset
+src/simulators/menu/materials/bailly.csv
+
+# Python cache
+.python-version
+.DS_Store
+.vscode/
+.ipynb_checkpoints/
+sbi-logs/
+__pycache__/
+logs/
