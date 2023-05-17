@@ -6,6 +6,7 @@ data/pnc/datasets/train_*
 data/typing/datasets/train_*
 
 # Empirical dataset
+data/typing/datasets/full_data/open_test_sections.csv
 src/simulators/menu/materials/bailly.csv
 
 # Python cache

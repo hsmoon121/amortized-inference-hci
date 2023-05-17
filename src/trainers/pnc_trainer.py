@@ -77,7 +77,7 @@ class PnCTrainer(BaseTrainer):
             raise RuntimeError(f"Wrong training type: {train_mode}")
 
     def _get_online_batch(self, batch_sz, n_trial):
-        return self.simulator.simulate(n_sim=batch_sz, sim_per_param=n_trial)
+        return self.simulator.simulate(n_param=batch_sz, sim_per_param=n_trial)
 
     def _get_offline_batch(self, batch_sz, n_trial):
         assert hasattr(self, "train_dataset")
@@ -86,9 +86,9 @@ class PnCTrainer(BaseTrainer):
     def _get_replay_batch(self, batch_sz, n_trial):
         assert hasattr(self, "memory")
         if len(self.memory) < batch_sz * 2:
-            sim_args = self.simulator.simulate(n_sim=batch_sz * 2, sim_per_param=n_trial)
+            sim_args = self.simulator.simulate(n_param=batch_sz * 2, sim_per_param=n_trial)
         else:
-            sim_args = self.simulator.simulate(n_sim=1, sim_per_param=n_trial)
+            sim_args = self.simulator.simulate(n_param=1, sim_per_param=n_trial)
         self.memory.push(*sim_args)
         return self.memory.sample(batch_sz)
 

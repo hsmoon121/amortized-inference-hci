@@ -79,7 +79,7 @@ class TypingTrainer(BaseTrainer):
             raise RuntimeError(f"Wrong training type: {train_mode}")
 
     def _get_online_batch(self, batch_sz, n_trial):
-        return self.simulator.simulate(n_sim=batch_sz, sim_per_param=batch_sz)
+        return self.simulator.simulate(n_param=batch_sz, n_eval_sentence=n_trial)
 
     def _get_offline_batch(self, batch_sz, n_trial):
         assert hasattr(self, "train_dataset")
