@@ -1,1 +1,1 @@
-from .amortizer import AmortizerForSummaryData, AmortizerForTrialData
+from .amortizer import AmortizerForSummaryData, AmortizerForTrialData, RegressionForSummaryData, RegressionForTrialData

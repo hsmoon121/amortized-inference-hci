@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 from .base_trainer import BaseTrainer
-from ..nets import AmortizerForTrialData
+from ..nets import AmortizerForTrialData, RegressionForTrialData
 from ..simulators import PnCSimulator
 from ..datasets import PnCUserDataset, PnCTrainDataset, PnCValidDataset
 from ..utils import ReplayBuffer, CosAnnealWR
@@ -16,8 +16,11 @@ class PnCTrainer(BaseTrainer):
         self.config = deepcopy(default_pnc_config) if config is None else config
         super().__init__(name=self.config["name"], task_name="pnc")
 
+        self.point_estimation = self.config["point_estimation"]
+        amortizer_fn = RegressionForTrialData if self.point_estimation else AmortizerForTrialData
+
         # Initialize the amortizer, simulator, and datasets
-        self.amortizer = AmortizerForTrialData(config=self.config["amortizer"])
+        self.amortizer = amortizer_fn(config=self.config["amortizer"])
         self.simulator = PnCSimulator(config=self.config["simulator"])
         self.user_dataset = PnCUserDataset()
         self.valid_dataset = PnCValidDataset(sim_config=self.config["simulator"])
@@ -206,32 +209,37 @@ class PnCTrainer(BaseTrainer):
             group_traj_data += ud[1]
 
         start = time()
-        lognorm_params, lognorm_samples = self.amortizer.infer(
-            group_stat_data,
-            group_traj_data,
-            n_sample=n_sample,
-            type=infer_type,
-            return_samples=True
-        )
+        if self.point_estimation:
+            lognorm_params = self.amortizer.infer(group_stat_data, group_traj_data)
+        else:
+            lognorm_params, lognorm_samples = self.amortizer.infer(
+                group_stat_data,
+                group_traj_data,
+                n_sample=n_sample,
+                type=infer_type,
+                return_samples=True
+            )
+            samples = self.simulator.convert_from_output(lognorm_samples)
+
+            if plot:
+                # Change order [n_v, sigma_v, ...] --> [sigma_v, n_v, ...]
+                permutation = np.arange(len(self.targeted_params))
+                permutation[0], permutation[1] = 1, 0
+                self._pair_plot(
+                    samples[:, permutation],
+                    self.param_symbol[permutation],
+                    gt_params=self.base_params[permutation],
+                    fname="user_posterior"
+                )
+
         lognorm_params = self._clip_params(lognorm_params)
         inferred_params = self.simulator.convert_from_output(lognorm_params)[0]
-        samples = self.simulator.convert_from_output(lognorm_samples)
         infer_time = time() - start
 
         for i, l in enumerate(self.targeted_params):
             res["Inferred_Params/user_" + l] = inferred_params[i]
         res["Inference_Time/infer_time"] = infer_time
 
-        if plot:
-            # Change order [n_v, sigma_v, ...] --> [sigma_v, n_v, ...]
-            permutation = np.arange(len(self.targeted_params))
-            permutation[0], permutation[1] = 1, 0
-            self._pair_plot(
-                samples[:, permutation],
-                self.param_symbol[permutation],
-                gt_params=self.base_params[permutation],
-                fname="user_posterior"
-            )
         return inferred_params
     
     def _group_level_prediction(
@@ -288,13 +296,17 @@ class PnCTrainer(BaseTrainer):
         indiv_inferred_params = list()
         for user_i, indiv_ud in enumerate(data_for_fitting):
             # Inference with individual-level data
-            lognorm_params = self.amortizer.infer(
-                indiv_ud[0],
-                indiv_ud[1],
-                n_sample=n_sample,
-                type=infer_type,
-                return_samples=False
-            )
+
+            if self.point_estimation:
+                lognorm_params = self.amortizer.infer(indiv_ud[0], indiv_ud[1])
+            else:
+                lognorm_params = self.amortizer.infer(
+                    indiv_ud[0],
+                    indiv_ud[1],
+                    n_sample=n_sample,
+                    type=infer_type,
+                    return_samples=False
+                )
             lognorm_params = self._clip_params(lognorm_params)
             inferred_params = self.simulator.convert_from_output(lognorm_params)[0]
             indiv_inferred_params.append(inferred_params)

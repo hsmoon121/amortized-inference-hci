@@ -4,7 +4,7 @@ from einops import rearrange
 from scipy.stats import gaussian_kde
 from scipy.optimize import minimize_scalar
 
-from .base import NetFrame
+from .base import NetFrame, LinearBlock
 from .encoder import EncoderNet, TrialAttentionNet, TrialInvariantNet
 from .invertible import InvertibleNet
 from .utils import mask_and_pad_traj_data, sort_and_pad_traj_data, get_auto_device
@@ -47,14 +47,12 @@ class AmortizerFrame(NetFrame):
         if type == "mode": # Maximum a Posteriori (MAP) estimation
             results = []
             if len(post_sampled.shape) > 2:
-                # If the posterior is multi-modal (>2), use the maximum of the product of the marginal densities
                 x = np.linspace(-3., 3., 300)
                 for i in range(n_param):
                     kdes = [gaussian_kde(post_sampled[:, tr, i]) for tr in range(post_sampled.shape[1])]
                     y = np.array([np.prod([kde(xi) for kde in kdes]) for xi in x])
                     results.append(x[np.argmax(y)])
             else:
-                # Use scipy.optimize.minimize_scalar to find the mode
                 for i in range(n_param):
                     kde = gaussian_kde(post_sampled[:, i])
                     opt_x = minimize_scalar(lambda x: -kde(x), method="golden").x
@@ -185,7 +183,6 @@ class AmortizerForTrialData(AmortizerFrame):
             contexts = rearrange(contexts, "(b e) c -> b e c", b=batch_param.shape[0])
             
         else:
-            full_stat_data = rearrange(batch_stat, "b e s -> (b e) s")
             full_traj_data = list()
             for data in batch_traj:
                 full_traj_data += list(data)
@@ -229,3 +226,95 @@ class AmortizerForTrialData(AmortizerFrame):
         args = self.invertible_net.sample(cond, n_sample)
         post_sampled, log_det_J = [arg.cpu().detach().numpy() for arg in args]
         return post_sampled, log_det_J
+    
+
+class RegressionForSummaryData(AmortizerFrame):
+    def __init__(self, config=dict()):
+        super().__init__(config)
+        self.encoder_net = EncoderNet(config["encoder"])
+        self.linear_net = LinearBlock(**config["linear"])
+        self._set_device(config)
+
+    def forward(self, stat_data, traj_data=None):
+        if not self.encoder_net.series_data:
+            cond = self.encoder_net(stat_data)
+            out = self.linear_net(cond)
+
+        elif self.encoder_net.traj_encoder_type == "transformer":
+            padded_traj, mask = mask_and_pad_traj_data(traj_data)
+            cond = self.encoder_net(stat_data, padded_traj, mask=mask)
+            out = self.linear_net(cond)
+
+        else:
+            sorted_args = sort_and_pad_traj_data(stat_data, traj_data)
+            cond = self.encoder_net(*sorted_args[0:-1])
+            _, inv_index = sorted_args[-1].sort()
+            out = self.linear_net(cond)
+            out = [o[inv_index] for o in out]
+        return out
+
+    def infer(self, stat_data, traj_data=None, n_sample=None, type=None, return_samples=False):
+        assert not return_samples
+        return self.forward(stat_data, traj_data).cpu().detach().numpy().reshape((-1,))
+
+
+class RegressionForTrialData(AmortizerFrame):
+    def __init__(self, config=dict()):
+        super().__init__(config)
+        self.encoder_net = EncoderNet(config["encoder"])
+
+        if config["trial_encoder_type"] == "attention":
+            self.trial_encoder_net = TrialAttentionNet(
+                self.encoder_net.compute_output_sz(),
+                config["trial_encoder"]["attention"],
+            )
+        elif config["trial_encoder_type"] == "invariant":
+            self.trial_encoder_net = TrialInvariantNet(
+                self.encoder_net.compute_output_sz(),
+                config["trial_encoder"]["invariant"],
+            )
+        else:
+            raise RuntimeError("trial_encoder_type should be among 'attention' and 'invariant'.")
+
+        self.linear_net = LinearBlock(**config["linear"])
+        self._set_device(config)
+
+    def forward(self, batch_stat, batch_traj=None):
+        full_stat_data = rearrange(batch_stat, "b e s -> (b e) s")
+
+        if not self.encoder_net.series_data:
+            contexts = self.encoder_net(full_stat_data)
+            contexts = rearrange(contexts, "(b e) c -> b e c", b=batch_stat.shape[0])
+            
+        else:
+            full_traj_data = list()
+            for data in batch_traj:
+                full_traj_data += list(data)
+
+            if self.encoder_net.traj_encoder_type == "transformer":
+                padded_traj, mask = mask_and_pad_traj_data(full_traj_data)
+                contexts = self.encoder_net(full_stat_data, padded_traj, mask=mask)
+                contexts = rearrange(contexts, "(b e) c -> b e c", b=batch_stat.shape[0])
+            else:
+                sorted_args = sort_and_pad_traj_data(full_stat_data, full_traj_data)
+                sorted_contexts = self.encoder_net(*sorted_args[0:-1])
+                _, inv_index = sorted_args[-1].sort()
+                contexts = sorted_contexts[inv_index]
+                contexts = rearrange(contexts, "(b e) c -> b e c", b=batch_stat.shape[0])
+
+        cond = self.trial_encoder_net(contexts)
+        out = self.linear_net(cond)
+        return out
+
+    def infer(self, stat_data, traj_data=None, n_sample=None, type=None, return_samples=False):
+        assert not return_samples
+        if not self.encoder_net.series_data:
+            contexts = self.encoder_net(stat_data)
+        elif self.encoder_net.traj_encoder_type == "transformer":
+            padded_traj, mask = mask_and_pad_traj_data(traj_data)
+            contexts = self.encoder_net(stat_data, padded_traj, mask=mask)
+        else:
+            sorted_args = sort_and_pad_traj_data(stat_data, traj_data)
+            contexts = self.encoder_net(*sorted_args[0:-1])
+        cond = self.trial_encoder_net(contexts)
+        return self.linear_net(cond).cpu().detach().numpy().reshape((-1,))

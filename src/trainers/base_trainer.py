@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from sklearn.metrics import r2_score
 import torch
+import torch.nn.functional as F
 
 from ..utils import Logger
 from ..utils.plot import plot_parameter_recovery, pair_plot
@@ -27,6 +28,7 @@ class BaseTrainer(ABC):
         self.base_params = None
         self.obs_label = None
         self.obs_description = None
+        self.point_estimation = False
 
         self.model_path = os.path.join(
             Path(__file__).parent.parent.parent,
@@ -141,8 +143,12 @@ class BaseTrainer(ABC):
         traj_data (list): [n_sim] list of trajectories (default: None)
         """
         self.amortizer.train()
-        z, log_det_J = self.amortizer(params, stat_data, traj_data)
-        loss = torch.mean(0.5 * torch.square(torch.norm(z, dim=-1)) - log_det_J)
+        if self.point_estimation:
+            params_tensor = torch.FloatTensor(params).to(self.amortizer.device)
+            loss = F.mse_loss(self.amortizer(stat_data, traj_data), params_tensor)
+        else:
+            z, log_det_J = self.amortizer(params, stat_data, traj_data)
+            loss = torch.mean(0.5 * torch.square(torch.norm(z, dim=-1)) - log_det_J)
         return self._optim_step(loss)
     
     def _optim_step(self, loss):

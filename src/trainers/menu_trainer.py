@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 from .base_trainer import BaseTrainer
-from ..nets import AmortizerForSummaryData
+from ..nets import AmortizerForSummaryData, RegressionForSummaryData
 from ..simulators import MenuSimulator
 from ..datasets import MenuUserDataset, MenuTrainDataset, MenuValidDataset
 from ..utils import ReplayBuffer, CosAnnealWR
@@ -16,8 +16,11 @@ class MenuTrainer(BaseTrainer):
         self.config = deepcopy(default_menu_config) if config is None else config
         super().__init__(name=self.config["name"], task_name="menu")
 
+        self.point_estimation = self.config["point_estimation"]
+        amortizer_fn = RegressionForSummaryData if self.point_estimation else AmortizerForSummaryData
+
         # Initialize the amortizer, simulator, and datasets
-        self.amortizer = AmortizerForSummaryData(config=self.config["amortizer"])
+        self.amortizer = amortizer_fn(config=self.config["amortizer"])
         self.simulator = MenuSimulator(config=self.config["simulator"])
         self.user_dataset = MenuUserDataset()
         self.valid_dataset = MenuValidDataset(n_param=200, sim_per_param=5000)
@@ -211,12 +214,25 @@ class MenuTrainer(BaseTrainer):
         Group-level fitting on user dataset
         """
         start = time()
-        inferred_params, samples = self.amortizer.infer(
-            group_data,
-            n_sample=n_sample,
-            type=infer_type,
-            return_samples=True
-        )
+        if self.point_estimation:
+            inferred_params = self.amortizer.infer(group_data)
+        else:
+            inferred_params, samples = self.amortizer.infer(
+                group_data,
+                n_sample=n_sample,
+                type=infer_type,
+                return_samples=True
+            )
+            
+            if plot:
+                self._pair_plot(
+                    samples,
+                    self.param_symbol,
+                    limits=[[0., 6.], [0., 1.], [0., 1.], [0., 1.]],
+                    gt_params=self.base_params,
+                    fname="user_posterior"
+                )
+
         inferred_params = self._clip_params(inferred_params)
         infer_time = time() - start
 
@@ -224,14 +240,6 @@ class MenuTrainer(BaseTrainer):
             res["Inferred_Params/user_" + l] = inferred_params[i]
         res["Inference_Time/infer_time"] = infer_time
 
-        if plot:
-            self._pair_plot(
-                samples,
-                self.param_symbol,
-                limits=[[0., 6.], [0., 1.], [0., 1.], [0., 1.]],
-                gt_params=self.base_params,
-                fname="user_posterior"
-            )
         return inferred_params
     
     def _group_level_prediction(
@@ -279,12 +287,16 @@ class MenuTrainer(BaseTrainer):
         indiv_inferred_params = list()
         for user_i in range(len(indiv_data)):
             # Inference with individual-level data
-            inferred_params = self.amortizer.infer(
-                np.expand_dims(indiv_data[user_i], axis=0),
-                n_sample=n_sample,
-                type=infer_type,
-                return_samples=False
-            )
+
+            if self.point_estimation:
+                inferred_params = self.amortizer.infer(np.expand_dims(indiv_data[user_i], axis=0))
+            else:
+                inferred_params = self.amortizer.infer(
+                    np.expand_dims(indiv_data[user_i], axis=0),
+                    n_sample=n_sample,
+                    type=infer_type,
+                    return_samples=False
+                )
             inferred_params = self._clip_params(inferred_params)
             indiv_inferred_params.append(inferred_params)
 

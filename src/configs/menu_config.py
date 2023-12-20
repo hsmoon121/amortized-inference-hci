@@ -3,6 +3,7 @@ default_menu_config = dict(
     learning_rate = 0.00005,
     lr_gamma = 0.9,
     clipping = 1.0,
+    point_estimation = False,
     amortizer = dict(
         device = None,
         trial_encoder_type = None,
@@ -30,6 +31,14 @@ default_menu_config = dict(
                 feat_sz = 16,
                 depth = 2,
             )
+        ),
+        linear = dict( # For point_estimation
+            in_sz = 32,
+            out_sz = 4,
+            hidden_sz = 512,
+            hidden_depth = 2,
+            batch_norm = False,
+            activation = "relu",
         )
     ),
     simulator = dict(

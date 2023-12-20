@@ -10,7 +10,7 @@ from scipy.stats import pearsonr, ttest_ind
 import torch
 
 from .base_trainer import BaseTrainer
-from ..nets import AmortizerForTrialData
+from ..nets import AmortizerForTrialData, RegressionForTrialData
 from ..simulators import TypingSimulator
 from ..datasets import TypingUserDataset, TypingTrainDataset, TypingValidDataset
 from ..utils import ReplayBuffer, CosAnnealWR
@@ -22,8 +22,11 @@ class TypingTrainer(BaseTrainer):
         self.config = deepcopy(default_typing_config) if config is None else config
         super().__init__(name=self.config["name"], task_name="typing")
 
+        self.point_estimation = self.config["point_estimation"]
+        amortizer_fn = RegressionForTrialData if self.point_estimation else AmortizerForTrialData
+
         # Initialize the amortizer, simulator, and datasets
-        self.amortizer = AmortizerForTrialData(config=self.config["amortizer"])
+        self.amortizer = amortizer_fn(config=self.config["amortizer"])
         self.simulator = TypingSimulator(config=self.config["simulator"])
         self.user_dataset = TypingUserDataset()
         self.valid_dataset = TypingValidDataset()
@@ -207,12 +210,26 @@ class TypingTrainer(BaseTrainer):
         Group-level fitting on user dataset
         """
         start = time()
-        inferred_params, samples = self.amortizer.infer(
-            data_for_fitting,
-            n_sample=n_sample,
-            type=infer_type,
-            return_samples=True
-        )
+
+        if self.point_estimation:
+            inferred_params = self.amortizer.infer(data_for_fitting)
+        else:
+            inferred_params, samples = self.amortizer.infer(
+                data_for_fitting,
+                n_sample=n_sample,
+                type=infer_type,
+                return_samples=True
+            )
+
+            if plot:
+                self._pair_plot(
+                    samples,
+                    self.param_symbol,
+                    limits=[[0.0, 1.0], [0.1, 0.9], [0.04, 0.14]],
+                    gt_params=self.base_params,
+                    fname="user_posterior"
+                )
+
         inferred_params = self._clip_params(inferred_params)
         infer_time = time() - start
 
@@ -220,14 +237,6 @@ class TypingTrainer(BaseTrainer):
             res["Inferred_Params/user_" + l] = inferred_params[i]
         res["Inference_Time/infer_time"] = infer_time
 
-        if plot:
-            self._pair_plot(
-                samples,
-                self.param_symbol,
-                limits=[[0.0, 1.0], [0.1, 0.9], [0.04, 0.14]],
-                gt_params=self.base_params,
-                fname="user_posterior"
-            )
         return inferred_params
     
     def _group_level_prediction(
@@ -287,12 +296,16 @@ class TypingTrainer(BaseTrainer):
         )
         indiv_inferred_params = list()
         for user_i in range(len(indiv_data_for_fitting)):
-            inferred_params = self.amortizer.infer(
-                indiv_data_for_fitting[user_i],
-                n_sample=n_sample,
-                type=infer_type,
-                return_samples=False
-            )
+
+            if self.point_estimation:
+                inferred_params = self.amortizer.infer(indiv_data_for_fitting[user_i])
+            else:
+                inferred_params = self.amortizer.infer(
+                    indiv_data_for_fitting[user_i],
+                    n_sample=n_sample,
+                    type=infer_type,
+                    return_samples=False
+                )
             inferred_params = self._clip_params(inferred_params)
             indiv_user_df = indiv_user_df.append(dict(zip(
                 cols,

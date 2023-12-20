@@ -3,6 +3,7 @@ default_pnc_config = dict(
     learning_rate = 0.0001,
     lr_gamma = 0.9,
     clipping = 0.5,
+    point_estimation = False,
     amortizer = dict(
         device = None,
         trial_encoder_type = "attention",
@@ -56,7 +57,15 @@ default_pnc_config = dict(
                 feat_sz = 32,
                 depth = 2,
             )
-        )
+        ),
+        linear = dict( # For point_estimation
+            in_sz = 32,
+            out_sz = 4,
+            hidden_sz = 256,
+            hidden_depth = 2,
+            batch_norm = False,
+            activation = "relu",
+        ),
     ),
     simulator = dict(
         seed = None,
